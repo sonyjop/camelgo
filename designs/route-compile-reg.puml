@@ -1,0 +1,57 @@
+@startuml
+title S-202: Route Compilation and Registration
+
+actor "Route Designer" as Designer
+participant "RouteBuilder" as Builder <<Interface Implemented by User>>
+participant "RouteDefinition" as RouteDef <<DSL State Struct>>
+participant "DefaultContext" as Context <<Concrete Context>>
+participant "PipelineProcessor" as PipelineProc <<Concrete Processor>>
+participant "RuntimeRoute" as Route <<Route State Struct>>
+participant "KafkaEndpoint" as Endpoint <<Interface/Concrete>>
+participant "KafkaConsumer" as Consumer <<Interface/Concrete>>
+
+== 1. Designer Submits Route ==
+Designer -> Context : AddRoutes(myRouteBuilder)
+activate Context
+Context -> Builder : Configure()
+activate Builder
+
+== 2. DSL Execution (Simplified Chaining) ==
+Builder -> Context : CreateRoute()
+Context --> RouteDef : new RouteDefinition()
+Builder -> RouteDef : From("kafka:in")
+Builder -> RouteDef : Process(LogProcessor)
+Builder -> RouteDef : To("http:out")
+RouteDef -> Context : GetEndpoint("http:out")
+Context --> Endpoint : httpEndpoint
+
+== 3. Route Compilation (Crucial Step) ==
+Builder --> Context : RouteDefinition Complete
+deactivate Builder
+Context -> RouteDef : CompileProcessors()
+activate RouteDef
+RouteDef -> PipelineProc : NewPipelineProcessor(ProcessorList...) 
+activate PipelineProc
+PipelineProc --> RouteDef : pipelineProcessorInstance
+deactivate PipelineProc
+
+Context -> RouteDef : GetFromURI()
+RouteDef --> Context : kafka:in
+
+Context -> Context : GetEndpoint("kafka:in")
+Context --> Endpoint : kafkaEndpoint
+
+Context -> Endpoint : CreateConsumer(pipelineProcessorInstance)
+activate Endpoint
+Endpoint --> Consumer : new KafkaConsumer(pipelineProcessorInstance)
+deactivate Endpoint
+
+== 4. Registration ==
+Context -> Route : NewRoute(kafkaConsumer, pipelineProcessorInstance)
+activate Route
+Route --> Context : runtimeRouteInstance
+deactivate Route
+Context -> Context : Add runtimeRouteInstance to Context.routes List
+Context --> Designer : Route Registered Successfully
+deactivate Context
+@enduml

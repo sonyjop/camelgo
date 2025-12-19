@@ -1,0 +1,38 @@
+@startumL
+title Concrete Processor Composition Tree
+
+interface Processor
+
+' --- Concrete Processors (Implement the Processor Interface) ---
+class PipelineProcessor
+class ProducerProcessor
+class ChoiceProcessor
+class MulticastProcessor
+
+Processor <|-- PipelineProcessor
+Processor <|-- ProducerProcessor
+Processor <|-- ChoiceProcessor
+Processor <|-- MulticastProcessor
+' ... and any future EIPProcessor
+
+' --- Composition (What they contain) ---
+class RouteDefinition {
+    - []Processor processors
+}
+class ConditionalBranch {
+    - Predicate condition
+    - PipelineProcessor processor
+}
+
+PipelineProcessor *-- Processor : contains list of
+RouteDefinition --> PipelineProcessor : compiles to
+
+ProducerProcessor *-- Producer : wraps
+
+ChoiceProcessor *-- ConditionalBranch : contains list of branches
+ChoiceProcessor *-- PipelineProcessor : (Otherwise Branch)
+
+MulticastProcessor *-- Processor : contains list of destinations
+MulticastProcessor *-- AggregationStrategy : uses to combine results
+
+@enduml

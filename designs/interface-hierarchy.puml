@@ -1,0 +1,20 @@
+@startuml
+title Interface Hierarchy
+
+interface Context
+interface Component
+interface Endpoint
+interface Producer
+interface Consumer
+interface Processor
+
+Context *-- Component : registers
+Context --* Endpoint : resolves
+Endpoint --* Producer : creates
+Endpoint --* Consumer : creates
+
+Consumer .> Processor : injects Exchange
+
+Processor <|-- Producer : (wrapped by ProducerProcessor)
+
+@enduml

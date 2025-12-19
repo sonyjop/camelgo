@@ -1,0 +1,57 @@
+@startuml
+title S-302: Exchange Execution Pipeline
+
+participant "KafkaConsumer" as Consumer
+participant "PipelineProcessor" as PipelineProc <<Routing Engine>>
+participant "P1_CustomLogic" as P1 <<Processor>>
+participant "P2_Transformer" as P2 <<Processor (e.g., DataFormat)>>
+participant "ProducerProcessor" as P3_ProdProc <<Processor (To Step)>>
+participant "HTTPProducer" as Prod <<Producer>>
+participant "Exchange" as Ex <<Data Container>>
+
+== 1. Pipeline Start (from S-301) ==
+Consumer -> PipelineProc : Process(ctx, exchange)
+activate PipelineProc
+
+== 2. Execution of Processor P1 (Filter/Validation) ==
+PipelineProc -> P1 : Process(ctx, exchange)
+activate P1
+P1 -> P1 : read Exchange.InMessage
+P1 --> PipelineProc : nil (success)
+deactivate P1
+
+== 3. P1 Completion & Message Flow Check ==
+PipelineProc -> PipelineProc : check Exchange.OutMessage (It is nil)
+' No message promotion occurs
+
+== 4. Execution of Processor P2 (Transformation) ==
+PipelineProc -> P2 : Process(ctx, exchange)
+activate P2
+P2 -> P2 : read Exchange.InMessage
+P2 -> Ex : set OutMessage (new payload)
+activate Ex
+P2 --> PipelineProc : nil (success)
+deactivate P2
+
+== 5. P2 Completion & Message Flow Promotion (Crucial Camel Semantic) ==
+PipelineProc -> PipelineProc : check Exchange.OutMessage (It is NOT nil)
+PipelineProc -> Ex : set InMessage = OutMessage
+PipelineProc -> Ex : set OutMessage = nil
+deactivate Ex
+
+== 6. Execution of P3 (The To Step) ==
+PipelineProc -> P3_ProdProc : Process(ctx, exchange)
+activate P3_ProdProc
+' P3_ProdProc wraps the actual Producer
+P3_ProdProc -> Prod : Process(ctx, exchange)
+activate Prod
+Prod -> Prod : send message over HTTP
+Prod --> P3_ProdProc : nil (success)
+deactivate Prod
+P3_ProdProc --> PipelineProc : nil (success)
+deactivate P3_ProdProc
+
+== 7. Pipeline Completion ==
+PipelineProc --> Consumer : nil (route finished)
+deactivate PipelineProc
+@enduml

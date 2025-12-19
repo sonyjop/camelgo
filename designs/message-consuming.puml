@@ -1,0 +1,42 @@
+@startuml
+title S-301: Message Consumption and Injection
+
+box "External System"
+    participant "Kafka Broker" as Broker
+end box
+participant "KafkaConsumer" as Consumer <<Concrete Consumer>>
+participant "Exchange" as Exchange <<Data Struct>>
+participant "PipelineProcessor" as PipelineProc <<Concrete Processor>>
+participant "LogProcessor" as LogProc <<Concrete Processor>>
+
+== 1. External Event ==
+Broker -> Consumer : deliverRawKafkaMessage()
+activate Consumer
+
+== 2. Translation and Exchange Creation ==
+Consumer -> Consumer : extractBodyAndHeaders()
+Consumer -> Exchange : NewMessage(rawBody, rawHeaders)
+Consumer -> Exchange : NewExchange(inMessage)
+activate Exchange
+Exchange --> Consumer : newExchangeInstance
+deactivate Exchange
+
+== 3. Injection into the Route ==
+' The Consumer holds a reference to the PipelineProcessor (set during S-202)
+Consumer -> PipelineProc : Process(context.Background(), newExchangeInstance)
+activate PipelineProc
+
+== 4. Execution Starts ==
+' The pipeline immediately calls the first Processor
+PipelineProc -> LogProc : Process(ctx, newExchangeInstance)
+activate LogProc
+LogProc --> PipelineProc : nil (success)
+deactivate LogProc
+
+' The PipelineProcessor continues the chain internally (see S-302)
+PipelineProc --> Consumer : nil (route complete)
+deactivate PipelineProc
+
+Consumer -> Consumer : acknowledgeKafkaMessage() 
+deactivate Consumer
+@enduml

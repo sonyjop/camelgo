@@ -1,0 +1,33 @@
+@startuml
+title S-102: Endpoint Resolution and Runtime Creation
+
+actor "Route Designer" as Designer
+participant "RouteDefinition" as RouteDef <<DSL Builder>>
+participant "DefaultContext" as Context <<Concrete Context>>
+participant "KafkaComponent" as KafkaComp <<Concrete Component>>
+participant "KafkaEndpoint" as Endpoint <<Concrete Endpoint>>
+participant "KafkaConsumer" as Consumer <<Concrete Consumer>>
+
+== Route Designer invokes DSL (From/To) ==
+Designer -> RouteDef : To("kafka:my-topic?group=A")
+activate RouteDef
+RouteDef -> Context : GetEndpoint("kafka:my-topic?group=A")
+activate Context
+
+Context -> Context : Find KafkaComponent in ComponentRegistry
+Context -> KafkaComp : CreateEndpoint("kafka:my-topic?group=A", "/my-topic", {group:A})
+activate KafkaComp
+KafkaComp --> Endpoint : new KafkaEndpoint(config)
+deactivate KafkaComp
+Context --> RouteDef : endpointInstance
+deactivate Context
+
+== Context Compiles the Route (Creation of Runtime Consumer/Producer) ==
+RouteDef -> Endpoint : CreateConsumer(pipelineProcessor)
+activate Endpoint
+Endpoint --> Consumer : new KafkaConsumer(endpoint, pipelineProcessor)
+deactivate Endpoint
+
+RouteDef -> RouteDef : RouteDef now holds the Consumer
+deactivate RouteDef
+@enduml
