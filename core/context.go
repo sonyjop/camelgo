@@ -34,6 +34,13 @@ type DefaultContext struct {
 	routes     []*Route
 }
 
+func (c *DefaultContext) Start() error {
+	return nil
+}
+func (c *DefaultContext) Stop() error {
+	return nil
+}
+
 // SetLoader allows the user to decide how they want to load routes (DSL, YAML, etc.)
 func (c *DefaultContext) SetLoader(l RouteLoader) {
 	c.loader = l
@@ -58,7 +65,7 @@ func (c *DefaultContext) AddRoutes(source interface{}) error {
 		var pipelineSteps []Processor
 		for _, stepDef := range def.Steps {
 			// Each definition (To, Choice, etc.) knows how to compile itself
-			proc, err := stepDef.Compile(c) 
+			proc, err := stepDef.Compile(c)
 			if err != nil {
 				return err
 			}
@@ -77,16 +84,17 @@ func (c *DefaultContext) AddRoutes(source interface{}) error {
 
 		// 6. Finalize the Runtime Route
 		runtimeRoute := &Route{
-        ID:       def.ID,
-        InputURI: def.InputURI,
-        Consumer: consumer,
-        Pipeline: pipeline,
-        context:  c,
-    }
-		
-		c.routes = append(c.routes, runtimeRoute)
-	
+			ID:       def.ID,
+			InputURI: def.InputURI,
+			Consumer: consumer,
+			Pipeline: pipeline,
+			context:  c,
+		}
 
+		c.routes = append(c.routes, runtimeRoute)
+
+		return nil
+	}
 	return nil
 }
 
@@ -95,6 +103,7 @@ func (c *DefaultContext) RegisterComponent(scheme string, component Component) {
 	defer c.mu.Unlock()
 	c.components[scheme] = component
 }
+
 func (c *DefaultContext) GetComponent(scheme string) (Component, error) {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
@@ -174,7 +183,11 @@ func (c *DefaultContext) parseUriAndOptions(rawUri string) (string, map[string]i
 
 	return scheme, options, nil
 }
+
 func (c *DefaultContext) compileRoute(def *RouteDefinition) (*Route, error) {
 	// Logic to call def.Compile() and wire the Consumer
 	return &Route{}, nil
+}
+func (c *DefaultContext) NewExchange() *Exchange {
+	return &Exchange{}
 }

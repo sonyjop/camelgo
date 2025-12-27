@@ -1,7 +1,5 @@
 package core
 
-//import "context"
-
 type Component interface {
 	GetScheme() string
 	CreateEndpoint(uri string, options map[string]interface{}) (Endpoint, error)
@@ -14,7 +12,9 @@ type Endpoint interface {
 }
 
 type Producer interface {
-	Process(ctx Context, exchange *Exchange) error
+	Processor
+	Start(ctx Context) error
+	Stop(ctx Context) error
 }
 
 type Consumer interface {
