@@ -32,13 +32,67 @@ type DefaultContext struct {
 	mu         sync.RWMutex
 	loader     RouteLoader
 	routes     []*Route
+	started    bool
 }
 
+func NewContext() *DefaultContext {
+	return &DefaultContext{
+		components: make(map[string]Component),
+		endpoints:  make(map[string]Endpoint),
+		routes:     []*Route{},
+	}
+}
 func (c *DefaultContext) Start() error {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	if c.started {
+		return nil // idempotent
+	}
+
+	// ensure maps are initialized
+	if c.components == nil {
+		c.components = make(map[string]Component)
+	}
+	if c.endpoints == nil {
+		c.endpoints = make(map[string]Endpoint)
+	}
+
+	// Start all routes sequentially. If any route fails to start, return error.
+	for _, r := range c.routes {
+		if r == nil {
+			continue
+		}
+		if err := r.Start(c); err != nil {
+			return fmt.Errorf("failed to start route %s: %w", r.ID, err)
+		}
+	}
+
+	c.started = true
 	return nil
 }
 func (c *DefaultContext) Stop() error {
-	return nil
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	if !c.started {
+		return nil // already stopped
+	}
+
+	// Stop routes in reverse order to mirror typical shutdown semantics
+	var firstErr error
+	for i := len(c.routes) - 1; i >= 0; i-- {
+		r := c.routes[i]
+		if r == nil {
+			continue
+		}
+		if err := r.Stop(c); err != nil && firstErr == nil {
+			firstErr = fmt.Errorf("failed to stop route %s: %w", r.ID, err)
+		}
+	}
+
+	c.started = false
+	return firstErr
 }
 
 // SetLoader allows the user to decide how they want to load routes (DSL, YAML, etc.)
@@ -126,9 +180,9 @@ func (c *DefaultContext) GetEndpoint(uri string) (Endpoint, error) {
 	}
 	c.mu.RUnlock()
 
-	// 2. Parse the URI to find the Scheme
-	// Example: "kafka:my-topic?broker=localhost:9092" -> scheme is "kafka"
-	scheme, options, err := c.parseUriAndOptions(uri)
+	// 2. Parse the URI to find the Scheme and Path
+	// Example: "kafka:my-topic?broker=localhost:9092" -> scheme is "kafka", path is "my-topic"
+	scheme, options, err := c.parseUriPathAndOptions(uri)
 	if err != nil {
 		return nil, err
 	}
@@ -141,8 +195,13 @@ func (c *DefaultContext) GetEndpoint(uri string) (Endpoint, error) {
 
 	// 4. Delegate Creation to the Component
 	// The Component is the expert on its own protocol.
-	// We might pass additional context-level configuration here if needed.
-	ep, err := component.CreateEndpoint(uri, options)
+	// options["path"] contains the resource path (e.g., "my-topic", "inbox/file.txt").
+	epCfg := EndpointConfig{
+		RawURI: uri,
+		Scheme: scheme,
+		Params: options,
+	}
+	ep, err := component.CreateEndpoint(epCfg)
 	if err != nil {
 		return nil, fmt.Errorf("component [%s] could not create endpoint: %w", scheme, err)
 	}
@@ -155,9 +214,12 @@ func (c *DefaultContext) GetEndpoint(uri string) (Endpoint, error) {
 	return ep, nil
 }
 
-// parseUriAndOptions handles the logic of extracting scheme and query params.
-func (c *DefaultContext) parseUriAndOptions(rawUri string) (string, map[string]interface{}, error) {
-	// 1. Extract Scheme (e.g., kafka:)
+// parseUriPathAndOptions handles the logic of extracting scheme, path, and query params.
+// It returns scheme, a map of options (including "path"), and any error.
+// The "path" key in options contains the resource identifier (e.g., topic name, file path).
+// Example: "file:inbox/file.txt?mode=read" -> scheme="file", options={"path": "inbox/file.txt", "mode": "read"}
+func (c *DefaultContext) parseUriPathAndOptions(rawUri string) (string, map[string]interface{}, error) {
+	// 1. Extract Scheme (e.g., file:, kafka:)
 	parts := strings.SplitN(rawUri, ":", 2)
 	if len(parts) < 2 {
 		return "", nil, fmt.Errorf("invalid URI: %s", rawUri)
@@ -165,7 +227,6 @@ func (c *DefaultContext) parseUriAndOptions(rawUri string) (string, map[string]i
 	scheme := parts[0]
 
 	// 2. Use net/url to parse the "path?query" portion
-	// We prepend a dummy protocol so net/url can handle the opaque part
 	u, err := url.Parse(parts[1])
 	if err != nil {
 		return "", nil, fmt.Errorf("failed to parse URI details: %w", err)
@@ -173,7 +234,14 @@ func (c *DefaultContext) parseUriAndOptions(rawUri string) (string, map[string]i
 
 	options := make(map[string]interface{})
 
-	// Convert url.Values (map[string][]string) to map[string]interface{}
+	// 3. Extract path (opaque or path component)
+	if u.Opaque != "" {
+		options["path"] = u.Opaque
+	} else if u.Path != "" {
+		options["path"] = u.Path
+	}
+
+	// 4. Convert url.Values (map[string][]string) to map[string]interface{}
 	queryParams := u.Query()
 	for k, v := range queryParams {
 		if len(v) > 0 {

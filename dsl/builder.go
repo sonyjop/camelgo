@@ -12,7 +12,9 @@ func (b *BaseRouteBuilder) From(uri string) *core.RouteDefinition {
 	b.definitions = append(b.definitions, route)
 	return route
 }
-
+func (b *BaseRouteBuilder) To(route *core.RouteDefinition, uri string) {
+	route.AddStep(&core.ToDefinition{URI: uri})
+}
 func (b *BaseRouteBuilder) GetRouteDefinitions() []*core.RouteDefinition {
 	return b.definitions
 }

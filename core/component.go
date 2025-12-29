@@ -2,9 +2,14 @@ package core
 
 type Component interface {
 	GetScheme() string
-	CreateEndpoint(uri string, options map[string]interface{}) (Endpoint, error)
+	CreateEndpoint(EndpointConfig) (Endpoint, error)
 }
-
+type EndpointConfig struct {
+	RawURI    string
+	Scheme    string
+	Params    map[string]interface{}
+	Component Component
+}
 type Endpoint interface {
 	CreateProducer() (Producer, error)
 	CreateConsumer(target Processor) (Consumer, error)
